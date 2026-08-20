@@ -1,0 +1,295 @@
+openapi: 3.0.3
+
+info:
+  title: Catalog API
+  version: 1.0.0
+  description: >
+    Catalog API exposing a CICS catalog application through
+    IBM z/OS Connect. The API provides operations to browse catalog
+    inventory, retrieve item details, and submit catalog orders.
+
+paths:
+  /catalog/orders:
+    post:
+      summary: Create order
+      operationId: createCatalogOrder
+      description: Creates a new catalog order for the specified item and quantity
+
+      parameters:
+        - name: caUserId
+          in: query
+          required: true
+          description: Identifier of the user submitting the order.
+          schema:
+            type: string
+            maxLength: 8
+
+      requestBody:
+        required: true
+        description: Order details including charging department, catalog item, and quantity requested.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+
+      responses:
+        '201':
+          description: The order was successfully created and assigned an order number.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateOrderResponse'
+
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema: 
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+  /catalog/items:
+    get:
+      tags:
+        - Catalog
+      summary: List catalog items
+      operationId: listCatalogItems
+      description: >
+        Retrieves a collection of catalog items beginning at the
+        specified item reference number. Results include inventory,
+        pricing, and purchasing information for each item.
+        Up to 15 items may be returned in a single request.
+
+      parameters:
+        - name: startRef
+          in: query
+          required: false
+          description: >
+            Reference number from which the catalog search should begin.
+            If omitted, the catalog is returned from the first available item.
+          schema:
+            type: integer
+            minimum: 1
+            example: 1000
+
+      responses:
+        '200':
+          description: >
+            Catalog items were successfully retrieved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogListResponse'
+
+        '500':
+          description: >
+            An unexpected application error occurred while retrieving
+            catalog items.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /catalog/items/{itemRef}:
+    get:
+      tags:
+        - Catalog
+      summary: Get catalog item
+      operationId: getCatalogItem
+      description: >
+        Retrieves detailed information for a single catalog item
+        identified by its item reference number.
+
+      parameters:
+        - name: itemRef
+          in: path
+          required: true
+          description: >
+            Unique catalog item reference number.
+          schema:
+            type: integer
+            example: 1001
+
+      responses:
+        '200':
+          description: >
+            The requested catalog item was found and returned.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CatalogItem'
+
+        '404':
+          description: >
+            No catalog item exists for the supplied reference number.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+        '500':
+          description: >
+            An unexpected application error occurred while retrieving
+            the catalog item.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+
+  schemas:
+
+    CatalogItem:
+      type: object
+      description: Catalog inventory item available for ordering.
+
+      properties:
+
+        itemRef:
+          type: integer
+          description: Unique catalog item reference number used to identify an item.
+          example: 1001
+
+        description:
+          type: string
+          maxLength: 40
+          description: Human-readable description of the catalog item.
+          example: Wireless Keyboard
+
+        department:
+          type: integer
+          description: Department code responsible for the catalog item.
+          example: 101
+
+        cost:
+          type: string
+          description: Unit cost of the catalog item.
+          example: "49.99"
+
+        inStock:
+          type: integer
+          description: Quantity currently available in inventory.
+          example: 25
+
+        onOrder:
+          type: integer
+          description: Quantity already on order from suppliers but not yet received.
+          example: 5
+
+      required:
+        - itemRef
+        - description
+        - department
+        - cost
+        - inStock
+        - onOrder
+
+    CatalogListResponse:
+      type: object
+      description: Response returned when requesting a collection of catalog items.
+
+      properties:
+
+        lastItemRef:
+          type: integer
+          description: Reference number of the last item returned in the current result set. Can be used for pagination.
+          example: 1015
+
+        itemCount:
+          type: integer
+          maximum: 15
+          description: Number of catalog items returned in the response.
+          example: 15
+
+        items:
+          type: array
+          description: Collection of catalog items.
+          maxItems: 15
+          items:
+            $ref: '#/components/schemas/CatalogItem'
+
+      required:
+        - itemCount
+        - items
+
+    CreateOrderRequest:
+      type: object
+      description: Request used to place an order for a catalog item.
+
+      properties:
+
+        caChargeDept:
+          type: string
+          maxLength: 8
+          description: Department code to which the cost of the order will be charged.
+          example: IT001
+
+        caItemRef:
+          type: integer
+          description: Reference number of the catalog item being ordered.
+          example: 1001
+
+        caQuantityReq:
+          type: integer
+          minimum: 1
+          description: Number of units requested.
+          example: 2
+
+      required:
+        - caChargeDept
+        - caItemRef
+        - caQuantityReq
+
+    CreateOrderResponse:
+      type: object
+      description: Confirmation returned after a successful order submission.
+
+      properties:
+
+        caRequestId:
+          type: string
+          description: Unique order request identifier assigned by the catalog application.
+          example: ORD-2026000123
+
+        caReturnCode:
+          type: integer
+          description: Application return code. A value of zero indicates successful processing.
+          example: 0
+
+        caResponseMessage:
+          type: string
+          description: Human-readable status message returned by the catalog application.
+          example: Order created successfully
+
+      required:
+        - caRequestId
+        - caReturnCode
+        - caResponseMessage
+
+    ErrorResponse:
+      type: object
+      description: Standard error information returned when processing cannot be completed.
+
+      properties:
+
+        returnCode:
+          type: integer
+          description: Application-specific error code indicating the reason for the failure.
+          example: 12
+
+        message:
+          type: string
+          description: Human-readable explanation of the error condition.
+          example: Catalog item not found
+
+      required:
+        - returnCode
+        - message
